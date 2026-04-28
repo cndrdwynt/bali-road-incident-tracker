@@ -1,0 +1,438 @@
+{
+  "name": "Traffic Bali",
+  "nodes": [
+    {
+      "parameters": {
+        "collection": "raw_posts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        272,
+        0
+      ],
+      "id": "aafb104e-9b7d-4a67-921f-74458ee859e4",
+      "name": "Find documents",
+      "credentials": {
+        "mongoDb": {
+          "id": "LoKrs9PPhxVST2kv",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        64,
+        0
+      ],
+      "id": "d84cac9a-b47c-4f9b-9d21-407531e9525d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analisis teks berita lalu lintas berikut dan berikan output dalam format JSON murni.\n\nEkstrak:\n1. street_name: Nama jalan. Jika tidak ada, isi 'Unknown'.\n2. incident_date: Tanggal (YYYY-MM-DD). Asumsikan 2026.\n3. incident_type: Pilih: 'Kecelakaan', 'Kemacetan', atau 'Kebakaran'.\n\nTeks: {{ $json.text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Kamu adalah asisten ekstraksi data yang hanya berkomunikasi menggunakan format JSON. Jangan memberikan penjelasan di luar JSON"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        736,
+        32
+      ],
+      "id": "75c4e2b0-1fa6-4373-a39a-b5c5b716ae66",
+      "name": "Basic LLM Chain",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        736,
+        208
+      ],
+      "id": "eb1546f9-0913-476f-b60a-6199781d6935",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "z3NRomxUEEAVmQH2",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Mengambil output teks dari node LLM sebelumnya\nconst rawText = $json.text;\n\n// 2. Mencari pola JSON {} di dalam teks\nconst jsonMatch = rawText.match(/\\{[\\s\\S]*\\}/);\nlet parsed = {};\n\nif (jsonMatch) {\n    try {\n        parsed = JSON.parse(jsonMatch[0]);\n    } catch (e) {\n        parsed = { street_name: \"Unknown\" };\n    }\n} else {\n    parsed = { street_name: \"Unknown\" };\n}\n\n// 3. Mengambil ID asli dari MongoDB\nconst originalId = $(\"Loop Over Items\").item.json._id;\nconst street = parsed.street_name || \"Unknown\";\n\n// 4. Logika filter\nconst isUnknown = street.toLowerCase().includes('unknown') || street === \"\";\n\n// 5. Return data bersih (Tanpa Latitude/Longitude palsu)\n// Koordinat nanti akan diambil secara otomatis oleh node HTTP Request\nreturn {\n  _id: originalId,\n  street_name: street,\n  incident_date: parsed.incident_date || \"\",\n  incident_type: parsed.incident_type || \"Lainnya\",\n  // Tambahkan dua baris ini sebagai nilai default (biar jalur False nggak error)\n  latitude: 0,\n  longitude: 0,\n  status: isUnknown ? \"ignored\" : \"processed\"\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        32
+      ],
+      "id": "89f2d20c-b31e-484e-a8bf-19871d9dbbdd",
+      "name": "Code in JavaScript",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "collection": "raw_posts",
+        "updateKey": "_id",
+        "fields": "street_name, incident_date, incident_type, status, latitude, longitude",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        1888,
+        48
+      ],
+      "id": "23f689f9-cafe-4bf6-9fa2-854514dfb6d6",
+      "name": "Update documents",
+      "credentials": {
+        "mongoDb": {
+          "id": "LoKrs9PPhxVST2kv",
+          "name": "MongoDB account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2064,
+        48
+      ],
+      "id": "33750e6d-74b1-4f22-9883-d1e7a2f30807",
+      "name": "Wait",
+      "webhookId": "89087e3f-7fa3-4b68-9cc2-903c2ba37fcd",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://nominatim.openstreetmap.org/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "=={{ $json.street_name }}, Bali"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "BaliTrafficApp/1.0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1488,
+        -32
+      ],
+      "id": "c02b31da-9575-4d48-8c41-5bfacbaf91aa",
+      "name": "HTTP Request",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c18e31d4-0ae6-4423-b623-6f5bd3acfef2",
+              "name": "_id",
+              "value": "={{ $node[\"Code in JavaScript\"].json[\"_id\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "8984e694-60ed-46e2-87a5-93bd7be24844",
+              "name": "street_name",
+              "value": "={{ $node[\"Code in JavaScript\"].json[\"street_name\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "79fe35e9-b0cd-4656-98f7-2d43e03d842f",
+              "name": "incident_date",
+              "value": "={{ $node[\"Code in JavaScript\"].json[\"incident_date\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "1d2f6897-2482-4ffe-9de4-7dff12c55fe2",
+              "name": "incident_type",
+              "value": "={{ $node[\"Code in JavaScript\"].json[\"incident_type\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "c837f6db-ae7e-4022-b6a5-7f42f405eb14",
+              "name": "status",
+              "value": "={{ $node[\"Code in JavaScript\"].json[\"status\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "15d56ea8-b385-4d19-80ab-aa0deca94f96",
+              "name": "latitude",
+              "value": "={{ $json.lat }}",
+              "type": "string"
+            },
+            {
+              "id": "bb5e39e8-fb2f-4180-87e3-806980b800fb",
+              "name": "longitude",
+              "value": "={{ $json.lon }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        -32
+      ],
+      "id": "7a4765de-f6fd-4a4a-915a-9054b449d3a0",
+      "name": "Edit Fields",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c709a4be-a26a-4d0a-a249-337a70d0d488",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "processed",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1264,
+        32
+      ],
+      "id": "e583839e-44c4-42aa-b5a4-ce9864c3dd38",
+      "name": "If",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        480,
+        16
+      ],
+      "id": "e34e8ec2-dabf-4eaf-b3b2-ed817261c83e",
+      "name": "Loop Over Items",
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Find documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find documents": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update documents": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Update documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9ffe1ad7-ce30-4f58-8f9b-f7c6337a67a5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ab946c78e3007f7bcd01128e78b9a4f4cea384277835290c31e45fc38b9b7ecb"
+  },
+  "id": "iqY9DjjNF3F7JopO",
+  "tags": []
+}

@@ -1,0 +1,12 @@
+# Abaikan folder database dan data aplikasi
+metabase_data/
+mongo_data/
+n8n_data/
+
+# Abaikan sampah Python
+**/__pycache__/
+*.pyc
+
+# Abaikan log dan environment
+*.log
+.env

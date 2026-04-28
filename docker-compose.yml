@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  mongodb_bali:
+    image: mongo:latest
+    container_name: mongodb_bali
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo_data:/data/db
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo_express_bali
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongodb_bali
+      - ME_CONFIG_MONGODB_PORT=27017
+    depends_on:
+      - mongodb_bali
+  
+  selenium-vnc:
+    image: selenium/standalone-chrome:latest
+    container_name: selenium_vnc_bali
+    shm_size: 2gb
+    ports:
+      - "4444:4444" 
+      - "7900:7900" # Link nonton: http://localhost:7900
+    environment:
+      - SE_START_XVFB=true    # INI WAJIB: Menyalakan layar virtual
+      - SE_START_VNC=true     # INI WAJIB: Menyalakan server VNC
+      - SE_VNC_PASSWORD=secret
+      - SE_NODE_MAX_SESSIONS=1
+  
+  fb_scraper:
+    build: ./scraper
+    container_name: fb_scraper_worker
+    shm_size: 2gb
+    volumes:
+      - ./scraper:/app # Agar update kodingan langsung terbaca
+    environment:
+      - MONGO_URL=mongodb://mongodb_bali:27017
+      - SELENIUM_REMOTE_URL=http://selenium-vnc:4444/wd/hub
+    depends_on:
+      - mongodb_bali
+      - selenium-vnc
+    restart: "no" 
+
+  n8n_bali:
+    image: n8nio/n8n:latest
+    container_name: n8n_bali
+    ports:
+      - "5680:5678" # DIUBAH KE 5680 AGAR AMAN DARI MBG
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    environment:
+      - N8N_BLOCK_XML_EXTERNAL_ENTITY_CHECK=true
+    restart: always
+
+  metabase_bali:
+    image: metabase/metabase:latest
+    container_name: metabase_bali
+    ports:
+      - "3001:3000" # DIUBAH KE 3001 AGAR AMAN DARI MBG
+    volumes:
+      - ./metabase_data:/metabase-data # DITAMBAHKAN AGAR DASHBOARD PERMANEN
+    restart: always
