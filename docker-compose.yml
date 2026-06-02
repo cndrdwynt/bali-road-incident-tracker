@@ -58,8 +58,7 @@ services:
       - ./n8n_data:/home/node/.n8n
     environment:
       - N8N_BLOCK_XML_EXTERNAL_ENTITY_CHECK=true
-    restart: always
-
+      - WEBHOOK_URL=https://remedios-directable-rosio.ngrok-free.dev
   metabase_bali:
     image: metabase/metabase:latest
     container_name: metabase_bali

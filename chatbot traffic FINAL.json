@@ -1,0 +1,172 @@
+{
+  "name": "chatbot traffic",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "541dc24a-ff7b-4b13-af3f-39ed3dfa2c4f",
+      "name": "Telegram Trigger",
+      "webhookId": "51d4d89f-c4cb-411a-bcbc-f1bc04202ca2",
+      "credentials": {
+        "telegramApi": {
+          "id": "PZVt4WWsXzZtZ7xv",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=={{ $('Telegram Trigger').item.json.message.text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "585adf23-6306-49c3-92b0-a51ebdf686f2",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        208,
+        224
+      ],
+      "id": "947861da-5934-42f5-9df9-aae81126c45d",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "z3NRomxUEEAVmQH2",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        0
+      ],
+      "id": "fec9c4fc-4fe9-4420-83c4-0e75fc635ffd",
+      "name": "Send a text message",
+      "webhookId": "54aa6987-c459-4e4a-9208-476883ab3ebf",
+      "credentials": {
+        "telegramApi": {
+          "id": "PZVt4WWsXzZtZ7xv",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "=Alat pencari database lalu lintas Bali.\nKirim satu parameter bernama \"input\" berisi string dengan format:\n[jenis_kejadian]|[lokasi]\n\nContoh:\n- Kebakaran|Padangsambian Kelod\n- semua|Dalung\n- Kemacetan|Bypass Ngurah Rai",
+        "collection": "=raw_posts",
+        "options": {
+          "limit": 5,
+          "sort": "{\"_id\": -1}"
+        },
+        "query": "={{\n  JSON.stringify(\n    (() => {\n      try {\n        let val = String($fromAI('input', '', 'string') || \"\").trim();\n        \n        // Kalau AI kirim kalimat penuh, coba ekstrak lokasi dari kata setelah \"di\"\n        let lokasiStr = \"\";\n        let kategoriStr = \"semua\";\n        \n        // Cek apakah format pipe sudah benar\n        if (val.includes('|')) {\n          let parts = val.split('|');\n          kategoriStr = parts[0].trim();\n          lokasiStr = parts[1].trim();\n        } else {\n          // Fallback: ekstrak dari kalimat\n          let diMatch = val.match(/\\bdi\\s+(.+)/i);\n          if (diMatch) lokasiStr = diMatch[1].replace(/[?.!]/g, '').trim();\n          \n          // Deteksi jenis kejadian\n          if (/kebakaran/i.test(val)) kategoriStr = \"Kebakaran\";\n          else if (/kecelakaan/i.test(val)) kategoriStr = \"Kecelakaan\";\n          else if (/kemacetan|macet/i.test(val)) kategoriStr = \"Kemacetan\";\n          else if (/banjir/i.test(val)) kategoriStr = \"Banjir\";\n        }\n        \n        if (!lokasiStr) return { \"status\": \"BLOCK_EMPTY_SEARCH\" };\n        \n        let queryAnd = [];\n        queryAnd.push({ \"status\": \"processed\" });\n        \n        if (kategoriStr.toLowerCase() !== \"semua\") {\n          queryAnd.push({ \"incident_type\": { \"$regex\": kategoriStr, \"$options\": \"i\" } });\n        }\n        \n        let lokasiWords = lokasiStr.replace(/[^a-zA-Z0-9\\s]/g, ' ').trim().split(/\\s+/).filter(w => w.length > 2);\n        if (lokasiWords.length === 0) return { \"status\": \"BLOCK_EMPTY_SEARCH\" };\n        \n        lokasiWords.forEach(w => {\n          queryAnd.push({\n            \"$or\": [\n              { \"street_name\": { \"$regex\": w, \"$options\": \"i\" } },\n              { \"text\": { \"$regex\": w, \"$options\": \"i\" } }\n            ]\n          });\n        });\n        \n        return { \"$and\": queryAnd };\n      } catch(e) {\n        return { \"status\": \"BLOCK_EMPTY_SEARCH\" };\n      }\n    })()\n  )\n}}"
+      },
+      "type": "n8n-nodes-base.mongoDbTool",
+      "typeVersion": 1.2,
+      "position": [
+        352,
+        224
+      ],
+      "id": "38353f72-aba6-43d6-ad82-e7d25839500b",
+      "name": "DatabaseLaluLintas",
+      "credentials": {
+        "mongoDb": {
+          "id": "LoKrs9PPhxVST2kv",
+          "name": "MongoDB account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DatabaseLaluLintas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "922a8952-dde2-4fef-88a0-bc4ab654ff20",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ab946c78e3007f7bcd01128e78b9a4f4cea384277835290c31e45fc38b9b7ecb"
+  },
+  "id": "bKcvIZS9s44tGY9x",
+  "tags": []
+}

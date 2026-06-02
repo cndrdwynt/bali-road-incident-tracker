@@ -10,3 +10,10 @@ n8n_data/
 # Abaikan log dan environment
 *.log
 .env
+
+# Abaikan Cookies Scraping (Sangat Rahasia!)
+scraper/cookies.json
+
+# Abaikan Binary Exe Lokal
+*.exe
+ngrok.exe
